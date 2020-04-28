@@ -243,7 +243,8 @@ struct rpl_parallel_thread_pool {
 
   rpl_parallel_thread_pool();
   int init(uint32 size);
-  void destroy();
+  void destroy_part_1();
+  void destroy_part_2();
   struct rpl_parallel_thread *get_thread(rpl_parallel_thread **owner,
                                          rpl_parallel_entry *entry);
   void release_thread(rpl_parallel_thread *rpt);
