@@ -6105,7 +6105,7 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
       table->field[1]->store(option_name, strlen(option_name), scs);
       table->field[2]->store(plugin_decl(plugin)->descr,
                              strlen(plugin_decl(plugin)->descr), scs);
-      tmp= &yesno[MY_TEST(hton->commit)];
+      tmp= &yesno[MY_TEST(hton->commit && hton->commit != hton->rollback)];
       table->field[3]->store(tmp->str, tmp->length, scs);
       table->field[3]->set_notnull();
       tmp= &yesno[MY_TEST(hton->prepare)];

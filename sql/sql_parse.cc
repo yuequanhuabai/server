@@ -1538,7 +1538,7 @@ public:
 
 static inline my_bool aria_implicit_commit(THD *thd)
 {
-#if defined(WITH_ARIA_STORAGE_ENGINE)
+#if NOT_NEEDED_ANYMORE
   if (thd_get_ha_data(thd, maria_hton))
   {
     MDL_request mdl_request;
@@ -3170,14 +3170,13 @@ mysql_create_routine(THD *thd, LEX *lex)
       statement takes metadata locks should be detected by a deadlock
       detector in MDL subsystem and reported as errors.
 
-      No need to commit/rollback statement transaction, it's not started.
-
       TODO: Long-term we should either ensure that implicit GRANT statement
             is written into binary log as a separate statement or make both
             creation of routine and implicit GRANT parts of one fully atomic
             statement.
       */
-    DBUG_ASSERT(thd->transaction->stmt.is_empty());
+    if (trans_commit_stmt(thd))
+      goto wsrep_error_label;
     close_thread_tables(thd);
     /*
       Check if the definer exists on slave,
@@ -3221,7 +3220,9 @@ mysql_create_routine(THD *thd, LEX *lex)
 #endif
     return false;
   }
-#ifdef WITH_WSREP
+  (void) trans_commit_stmt(thd);
+
+#if !defined(NO_EMBEDDED_ACCESS_CHECKS) || defined(WITH_WSREP)
 wsrep_error_label:
 #endif
   return true;
@@ -6571,14 +6572,13 @@ drop_routine(THD *thd, LEX *lex)
     statement takes metadata locks should be detected by a deadlock
     detector in MDL subsystem and reported as errors.
 
-    No need to commit/rollback statement transaction, it's not started.
-
     TODO: Long-term we should either ensure that implicit REVOKE statement
     is written into binary log as a separate statement or make both
     dropping of routine and implicit REVOKE parts of one fully atomic
     statement.
   */
-  DBUG_ASSERT(thd->transaction->stmt.is_empty());
+  if (trans_commit_stmt(thd))
+    sp_result= SP_INTERNAL_ERROR;
   close_thread_tables(thd);
 
   if (sp_result != SP_KEY_NOT_FOUND &&

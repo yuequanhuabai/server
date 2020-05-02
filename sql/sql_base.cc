@@ -4315,6 +4315,13 @@ restart:
           goto error;
         }
       }
+      /*
+        Commit reading the procedure. If not, the transaction for reading
+        will active when mysql_execute() is called at start of executing
+        if the stored procedure
+      */
+      if (!thd->in_sub_stmt)
+        trans_commit_stmt(thd);
     }
     if ((error= prelocking_strategy->handle_end(thd)))
       goto error;

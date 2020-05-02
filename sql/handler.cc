@@ -1602,14 +1602,6 @@ int ha_commit_trans(THD *thd, bool all)
 
     DEBUG_SYNC(thd, "ha_commit_trans_after_acquire_commit_lock");
   }
-#if defined(WITH_ARIA_STORAGE_ENGINE)
-    if ((error= ha_maria::implicit_commit(thd, TRUE)))
-    {
-      my_error(ER_ERROR_DURING_COMMIT, MYF(0), error);
-      goto err;
-    }
-#endif
-
   if (rw_trans &&
       opt_readonly &&
       !(thd->security_ctx->master_access & PRIV_IGNORE_READ_ONLY) &&
@@ -4514,7 +4506,6 @@ void handler::mark_trx_read_write_internal()
   */
   if (ha_info->is_started())
   {
-    DBUG_ASSERT(has_transaction_manager());
     /*
       table_share can be NULL in ha_delete_table(). See implementation
       of standalone function ha_delete_table() in sql_base.cc.
@@ -6180,7 +6171,7 @@ extern "C" enum icp_result handler_index_cond_check(void* h_arg)
   THD *thd= h->table->in_use;
   enum icp_result res;
 
-  enum thd_kill_levels abort_at= h->has_transactions() ?
+  enum thd_kill_levels abort_at= h->has_rollback() ?
     THD_ABORT_SOFTLY : THD_ABORT_ASAP;
   if (thd_kill_level(thd) > abort_at)
     return ICP_ABORTED_BY_USER;

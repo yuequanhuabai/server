@@ -1765,6 +1765,12 @@ handlerton *ha_default_tmp_handlerton(THD *thd);
 */
 #define HTON_TABLE_MAY_NOT_EXIST_ON_SLAVE (1 << 15)
 
+/*
+  True if handler cannot roolback transactions. If not true, the transaction
+  will be put in the transactional binlog cache.
+*/
+#define HTON_NO_ROLLBACK (1 << 16)
+
 class Ha_trx_info;
 
 struct THD_TRANS
@@ -3556,6 +3562,16 @@ public:
   bool has_transaction_manager()
   {
     return ((ha_table_flags() & HA_NO_TRANSACTIONS) == 0);
+  }
+
+  /*
+    True if table has rollback. Used to check if an update on the table
+    can be killed fast.
+  */
+
+  bool has_rollback()
+  {
+    return ((ht->flags & HTON_NO_ROLLBACK) == 0);
   }
 
   /**

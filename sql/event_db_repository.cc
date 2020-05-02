@@ -30,6 +30,7 @@
 #include "events.h"
 #include "sql_show.h"
 #include "lock.h"                               // MYSQL_LOCK_IGNORE_TIMEOUT
+#include "transaction.h"
 
 /**
   @addtogroup Event_Scheduler
@@ -1033,6 +1034,7 @@ Event_db_repository::drop_schema_events(THD *thd, const LEX_CSTRING *schema)
   end_read_record(&read_record_info);
 
 end:
+  trans_commit_stmt(thd);
   close_thread_tables(thd);
   /*
     Make sure to only release the MDL lock on mysql.event, not other

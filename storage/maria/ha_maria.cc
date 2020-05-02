@@ -52,7 +52,7 @@ C_MODE_END
 */
 #ifdef MARIA_CANNOT_ROLLBACK
 #define CANNOT_ROLLBACK_FLAG HA_NO_TRANSACTIONS
-#define trans_register_ha(A, B, C)  do { /* nothing */ } while(0)
+// #define trans_register_ha(A, B, C, E)  do { /* nothing */ } while(0)
 #else
 #define CANNOT_ROLLBACK_FLAG 0
 #endif
@@ -964,12 +964,12 @@ static int maria_create_trn_for_mysql(MARIA_HA *info)
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     thd_set_ha_data(thd, maria_hton, trn);
     if (thd->variables.option_bits & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-      trans_register_ha(thd, TRUE, maria_hton);
+      trans_register_ha(thd, TRUE, maria_hton, trn->trid);
   }
   _ma_set_trn_for_table(info, trn);
   if (!trnman_increment_locked_tables(trn))
   {
-    trans_register_ha(thd, FALSE, maria_hton);
+    trans_register_ha(thd, FALSE, maria_hton, trn->trid);
     trnman_new_statement(trn);
   }
 #ifdef EXTRA_DEBUG
@@ -2839,7 +2839,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
             DBUG_PRINT("info", ("THD_TRN set to 0x0"));
             thd_set_ha_data(thd, maria_hton, 0);
           }
-#endif
+#endif /* MARIA_CANNOT_ROLLBACK */
         }
         trnman_set_flags(trn, trnman_get_flags(trn) & ~ TRN_STATE_INFO_LOGGED);
       }
@@ -3401,23 +3401,36 @@ static int maria_commit(handlerton *hton __attribute__ ((unused)),
 {
   TRN *trn= THD_TRN;
   int res;
-  MARIA_HA *used_instances= (MARIA_HA*) trn->used_instances;
+  MARIA_HA *used_instances;
   DBUG_ENTER("maria_commit");
 
-  DBUG_ASSERT(trnman_has_locked_tables(trn) == 0);
-  trnman_reset_locked_tables(trn, 0);
-  trnman_set_flags(trn, trnman_get_flags(trn) & ~TRN_STATE_INFO_LOGGED);
+  /* No commit inside lock_tables() */
+  if ((!trn ||
+       thd->locked_tables_mode == LTM_LOCK_TABLES ||
+       thd->locked_tables_mode == LTM_PRELOCKED_UNDER_LOCK_TABLES))
+    DBUG_RETURN(0);
 
+#ifdef NOT_NEEDED
+  /* Check if external_unlock() has been called */
+  DBUG_ASSERT(trnman_has_locked_tables(trn) == 0);
+#endif
   /* statement or transaction ? */
   if ((thd->variables.option_bits & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
       !all)
     DBUG_RETURN(0); // end of statement
+
+  used_instances= (MARIA_HA*) trn->used_instances;
+  trnman_reset_locked_tables(trn, 0);
+  trnman_set_flags(trn, trnman_get_flags(trn) & ~TRN_STATE_INFO_LOGGED);
+  trn->used_instances= 0;
   res= ma_commit(trn);
   reset_thd_trn(thd, used_instances);
+  thd_set_ha_data(thd, maria_hton, 0);
   DBUG_RETURN(res);
 }
 
 
+#ifndef MARIA_CANNOT_ROLLBACK
 static int maria_rollback(handlerton *hton __attribute__ ((unused)),
                           THD *thd, bool all)
 {
@@ -3437,7 +3450,7 @@ static int maria_rollback(handlerton *hton __attribute__ ((unused)),
   DBUG_RETURN(trnman_rollback_trn(trn) ?
               HA_ERR_OUT_OF_MEM : 0); // end of transaction
 }
-
+#endif /* MARIA_CANNOT_ROLLBACK */
 
 
 /**
@@ -3679,18 +3692,17 @@ static int ha_maria_init(void *p)
   maria_hton->panic= maria_hton_panic;
   maria_hton->tablefile_extensions= ha_maria_exts;
   maria_hton->commit= maria_commit;
-  maria_hton->rollback= maria_rollback;
+  /* Aria can't rollback, so we have to commit instead */
+  maria_hton->rollback= maria_commit;
   maria_hton->checkpoint_state= maria_checkpoint_state;
-#ifdef MARIA_CANNOT_ROLLBACK
-  maria_hton->commit= 0;
-#endif
   maria_hton->flush_logs= maria_flush_logs;
   maria_hton->show_status= maria_show_status;
   maria_hton->prepare_for_backup= maria_prepare_for_backup;
   maria_hton->end_backup= maria_end_backup;
 
   /* TODO: decide if we support Maria being used for log tables */
-  maria_hton->flags= HTON_CAN_RECREATE | HTON_SUPPORT_LOG_TABLES;
+  maria_hton->flags= (HTON_CAN_RECREATE | HTON_SUPPORT_LOG_TABLES |
+                      HTON_NO_ROLLBACK);
   bzero(maria_log_pagecache, sizeof(*maria_log_pagecache));
   maria_tmpdir= &mysql_tmpdir_list;             /* For REDO */
 
