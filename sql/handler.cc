@@ -1547,15 +1547,6 @@ int ha_commit_trans(THD *thd, bool all)
       wsrep_commit_empty(thd, all);
 #endif /* WITH_WSREP */
 
-#if defined(WITH_ARIA_STORAGE_ENGINE)
-    /* This is needed to ensure that repair commits properly */
-    if ((error= ha_maria::implicit_commit(thd, TRUE)))
-    {
-      my_error(ER_ERROR_DURING_COMMIT, MYF(0), error);
-      ha_rollback_trans(thd, all);
-      DBUG_RETURN(1);
-    }
-#endif
     DBUG_RETURN(0);
   }
 
@@ -1579,7 +1570,7 @@ int ha_commit_trans(THD *thd, bool all)
     the plugin table to innodb and thus plugin_load will call
     mysql_close_tables() which calls trans_commit_trans() with maria_hton = 0
   */
-  if (rw_trans || (likely(maria_hton) && thd_get_ha_data(thd, maria_hton)))
+  if (rw_trans)
   {
     /*
       Acquire a metadata lock which will ensure that COMMIT is blocked
