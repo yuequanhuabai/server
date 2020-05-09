@@ -50,12 +50,6 @@ C_MODE_END
   Note that in future versions, only *transactional* Maria tables can
   rollback, so this flag should be up or down conditionally.
 */
-#ifdef MARIA_CANNOT_ROLLBACK
-#define CANNOT_ROLLBACK_FLAG HA_NO_TRANSACTIONS
-// #define trans_register_ha(A, B, C, E)  do { /* nothing */ } while(0)
-#else
-#define CANNOT_ROLLBACK_FLAG 0
-#endif
 #define THD_TRN (TRN*) thd_get_ha_data(thd, maria_hton)
 
 ulong pagecache_division_limit, pagecache_age_threshold, pagecache_file_hash_size;
@@ -1020,7 +1014,7 @@ handler(hton, table_arg), file(0),
 int_table_flags(HA_NULL_IN_KEY | HA_CAN_FULLTEXT | HA_CAN_SQL_HANDLER |
                 HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE |
                 HA_DUPLICATE_POS | HA_CAN_INDEX_BLOBS | HA_AUTO_PART_KEY |
-                HA_FILE_BASED | HA_CAN_GEOMETRY | CANNOT_ROLLBACK_FLAG |
+                HA_FILE_BASED | HA_CAN_GEOMETRY |
                 HA_CAN_BIT_FIELD | HA_CAN_RTREEKEYS | HA_CAN_REPAIR |
                 HA_CAN_VIRTUAL_COLUMNS | HA_CAN_EXPORT |
                 HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT |
@@ -1186,6 +1180,7 @@ int ha_maria::open(const char *name, int mode, uint test_if_locked)
       make sure to regularly commit in the delayed_insert thread).
     */
     int_table_flags|= HA_CAN_INSERT_DELAYED;
+    int_table_flags|= HA_NO_TRANSACTIONS;
   }
   if (file->s->options & (HA_OPTION_CHECKSUM | HA_OPTION_COMPRESS_RECORD))
     int_table_flags |= HA_HAS_NEW_CHECKSUM;
@@ -2827,19 +2822,17 @@ int ha_maria::external_lock(THD *thd, int lock_type)
           */
           DBUG_ASSERT(!thd->get_stmt_da()->is_sent() ||
                       thd->killed);
-          /* autocommit ? rollback a transaction */
-#ifdef MARIA_CANNOT_ROLLBACK
-          if (ma_commit(trn))
-            DBUG_RETURN(1);
-          thd_set_ha_data(thd, maria_hton, 0);
-#else
-          if (!(thd->variables.option_bits & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+          /*
+            If autocommit, commit transaction. This can happen when open and
+            lock tables as part of creating triggers, in which case commit
+            is not called.
+          */
+          if (!(thd->variables.option_bits &
+                (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
           {
-            trnman_rollback_trn(trn);
-            DBUG_PRINT("info", ("THD_TRN set to 0x0"));
+            ma_commit(trn);
             thd_set_ha_data(thd, maria_hton, 0);
           }
-#endif /* MARIA_CANNOT_ROLLBACK */
         }
         trnman_set_flags(trn, trnman_get_flags(trn) & ~ TRN_STATE_INFO_LOGGED);
       }
@@ -3410,10 +3403,6 @@ static int maria_commit(handlerton *hton __attribute__ ((unused)),
        thd->locked_tables_mode == LTM_PRELOCKED_UNDER_LOCK_TABLES))
     DBUG_RETURN(0);
 
-#ifdef NOT_NEEDED
-  /* Check if external_unlock() has been called */
-  DBUG_ASSERT(trnman_has_locked_tables(trn) == 0);
-#endif
   /* statement or transaction ? */
   if ((thd->variables.option_bits & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
       !all)
@@ -3429,8 +3418,23 @@ static int maria_commit(handlerton *hton __attribute__ ((unused)),
   DBUG_RETURN(res);
 }
 
+#ifdef MARIA_CANNOT_ROLLBACK
+static int maria_rollback(handlerton *hton, THD *thd, bool all)
+{
+  TRN *trn= THD_TRN;
+  DBUG_ENTER("maria_rollback");
+  if (!trn)
+    DBUG_RETURN(0);
+  if (trn->undo_lsn)
+    push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
+                        ER_DATA_WAS_COMMITED_UNDER_ROLLBACK,
+                        ER_THD(thd, ER_DATA_WAS_COMMITED_UNDER_ROLLBACK),
+                        "Aria");
+  DBUG_RETURN(maria_commit(hton, thd, all));
+}
 
-#ifndef MARIA_CANNOT_ROLLBACK
+#else
+
 static int maria_rollback(handlerton *hton __attribute__ ((unused)),
                           THD *thd, bool all)
 {
@@ -3692,8 +3696,7 @@ static int ha_maria_init(void *p)
   maria_hton->panic= maria_hton_panic;
   maria_hton->tablefile_extensions= ha_maria_exts;
   maria_hton->commit= maria_commit;
-  /* Aria can't rollback, so we have to commit instead */
-  maria_hton->rollback= maria_commit;
+  maria_hton->rollback= maria_rollback;
   maria_hton->checkpoint_state= maria_checkpoint_state;
   maria_hton->flush_logs= maria_flush_logs;
   maria_hton->show_status= maria_show_status;

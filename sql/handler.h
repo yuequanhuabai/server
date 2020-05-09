@@ -3557,11 +3557,11 @@ public:
             == 0);
   }
   /*
-    True if the underlaying table doesn't support transactions
+    True if the underlaying table support transactions and rollback
   */
   bool has_transaction_manager()
   {
-    return ((ha_table_flags() & HA_NO_TRANSACTIONS) == 0);
+    return ((ha_table_flags() & HA_NO_TRANSACTIONS) == 0 && has_rollback());
   }
 
   /*
