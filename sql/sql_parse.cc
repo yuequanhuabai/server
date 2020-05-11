@@ -437,16 +437,13 @@ bool stmt_causes_implicit_commit(THD *thd, uint mask)
     DBUG_RETURN(FALSE);
 
   switch (lex->sql_command) {
-  case SQLCOM_DROP_TABLE:
-  case SQLCOM_DROP_SEQUENCE:
-    skip= (lex->tmp_table() ||
-           (thd->variables.option_bits & OPTION_GTID_BEGIN));
-    break;
   case SQLCOM_ALTER_TABLE:
   case SQLCOM_ALTER_SEQUENCE:
     /* If ALTER TABLE of non-temporary table, do implicit commit */
     skip= (lex->tmp_table());
     break;
+  case SQLCOM_DROP_TABLE:
+  case SQLCOM_DROP_SEQUENCE:
   case SQLCOM_CREATE_TABLE:
   case SQLCOM_CREATE_SEQUENCE:
     /*

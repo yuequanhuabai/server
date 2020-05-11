@@ -2590,7 +2590,8 @@ void THD::add_changed_table(TABLE *table)
 {
   DBUG_ENTER("THD::add_changed_table(table)");
 
-  DBUG_ASSERT(in_multi_stmt_transaction_mode() && table->file->has_transactions());
+  DBUG_ASSERT(in_multi_stmt_transaction_mode() &&
+              table->file->has_transactions());
   add_changed_table(table->s->table_cache_key.str,
                     (long) table->s->table_cache_key.length);
   DBUG_VOID_RETURN;
@@ -5736,7 +5737,7 @@ void THD::mark_transaction_to_rollback(bool all)
 /**
   Commit the whole transaction (both statment and all)
 
-  This is used mainly to commit and independent transaction,
+  This is used mainly to commit an independent transaction,
   like reading system tables.
 
   @return  0  0k
@@ -5755,6 +5756,11 @@ int THD::commit_whole_transaction_and_close_tables()
   if (!open_tables)
     DBUG_RETURN(0);
 
+  /*
+    Ensure table was locked (opened with open_and_lock_tables()). If not
+    the THD can't be part of any transactions and doesn't have to call
+    this function.
+  */
   DBUG_ASSERT(lock);
 
   error= ha_commit_trans(this, FALSE);
@@ -5762,7 +5768,7 @@ int THD::commit_whole_transaction_and_close_tables()
   if ((error2= mysql_unlock_tables(this, lock)))
   {
     my_error(ER_ERROR_DURING_COMMIT, MYF(0), error2);
-    error= error;
+    error= error2;
   }
   lock= 0;
   if ((error2= ha_commit_trans(this, TRUE)))

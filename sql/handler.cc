@@ -1984,7 +1984,8 @@ int ha_rollback_trans(THD *thd, bool all)
       int err;
       handlerton *ht= ha_info->ht();
       if ((err= ht->rollback(ht, thd, all)))
-      { // cannot happen
+      {
+        // cannot happen
         my_error(ER_ERROR_DURING_ROLLBACK, MYF(0), err);
         error=1;
 #ifdef WITH_WSREP
@@ -6911,7 +6912,7 @@ bool handler::prepare_for_row_logging()
     row_logging_has_trans=
       ((sql_command_flags[table->in_use->lex->sql_command] &
         (CF_SCHEMA_CHANGE | CF_ADMIN_COMMAND)) ||
-       table->file->has_transactions());
+       table->file->has_transactions_and_rollback());
   }
   else
   {

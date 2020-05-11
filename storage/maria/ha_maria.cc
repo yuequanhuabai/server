@@ -50,6 +50,12 @@ C_MODE_END
   Note that in future versions, only *transactional* Maria tables can
   rollback, so this flag should be up or down conditionally.
 */
+#ifdef ARIA_HAS_TRANSACTIONS
+#define TRANSACTION_STATE
+#else
+#define TRANSACTION_STATE HA_NO_TRANSACTIONS
+#endif
+
 #define THD_TRN (TRN*) thd_get_ha_data(thd, maria_hton)
 
 ulong pagecache_division_limit, pagecache_age_threshold, pagecache_file_hash_size;
@@ -1014,7 +1020,7 @@ handler(hton, table_arg), file(0),
 int_table_flags(HA_NULL_IN_KEY | HA_CAN_FULLTEXT | HA_CAN_SQL_HANDLER |
                 HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE |
                 HA_DUPLICATE_POS | HA_CAN_INDEX_BLOBS | HA_AUTO_PART_KEY |
-                HA_FILE_BASED | HA_CAN_GEOMETRY |
+                HA_FILE_BASED | HA_CAN_GEOMETRY | TRANSACTION_STATE |
                 HA_CAN_BIT_FIELD | HA_CAN_RTREEKEYS | HA_CAN_REPAIR |
                 HA_CAN_VIRTUAL_COLUMNS | HA_CAN_EXPORT |
                 HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT |
@@ -1179,8 +1185,7 @@ int ha_maria::open(const char *name, int mode, uint test_if_locked)
       client doing INSERT DELAYED knows the specificities; but we then should
       make sure to regularly commit in the delayed_insert thread).
     */
-    int_table_flags|= HA_CAN_INSERT_DELAYED;
-    int_table_flags|= HA_NO_TRANSACTIONS;
+    int_table_flags|= HA_CAN_INSERT_DELAYED | HA_NO_TRANSACTIONS;
   }
   if (file->s->options & (HA_OPTION_CHECKSUM | HA_OPTION_COMPRESS_RECORD))
     int_table_flags |= HA_HAS_NEW_CHECKSUM;
@@ -2740,6 +2745,7 @@ void ha_maria::change_table_ptr(TABLE *table_arg, TABLE_SHARE *share)
 
 int ha_maria::external_lock(THD *thd, int lock_type)
 {
+  int result= 0, result2;
   DBUG_ENTER("ha_maria::external_lock");
   file->external_ref= (void*) table;            // For ma_killed()
   /*
@@ -2780,7 +2786,19 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         */
         DBUG_PRINT("info", ("Disabling logging for table"));
         _ma_tmp_disable_logging_for_table(file, TRUE);
+        file->autocommit= 0;
       }
+      else
+        file->autocommit= !(thd->variables.option_bits &
+                            (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+#ifndef ARIA_HAS_TRANSACTIONS
+      /*
+        Until Aria has full transactions support, including MVCC support for
+        delete and update and purging of old states, we have to commit for
+        every statement.
+      */
+      file->autocommit=1;
+#endif
     }
     else
     {
@@ -2826,11 +2844,12 @@ int ha_maria::external_lock(THD *thd, int lock_type)
             If autocommit, commit transaction. This can happen when open and
             lock tables as part of creating triggers, in which case commit
             is not called.
+            Until ARIA_HAS_TRANSACTIONS is not defined, always commit.
           */
-          if (!(thd->variables.option_bits &
-                (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+          if (file->autocommit)
           {
-            ma_commit(trn);
+            if (ma_commit(trn))
+              result= HA_ERR_INTERNAL_ERROR;
             thd_set_ha_data(thd, maria_hton, 0);
           }
         }
@@ -2838,9 +2857,10 @@ int ha_maria::external_lock(THD *thd, int lock_type)
       }
     }
   } /* if transactional table */
-  int result = maria_lock_database(file, !table->s->tmp_table ?
-                                  lock_type : ((lock_type == F_UNLCK) ?
-                                               F_UNLCK : F_EXTRA_LCK));
+  if ((result2= maria_lock_database(file, !table->s->tmp_table ?
+                                    lock_type : ((lock_type == F_UNLCK) ?
+                                                 F_UNLCK : F_EXTRA_LCK))))
+    result= result2;
   if (!file->s->base.born_transactional)
     file->state= &file->s->state.state;         // Restore state if clone
 

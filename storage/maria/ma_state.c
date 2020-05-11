@@ -636,9 +636,10 @@ void _ma_block_get_status(void* param, my_bool concurrent_insert)
 
   info->row_base_length= info->s->base_length;
   info->row_flag= info->s->base.default_row_flag;
-  if (concurrent_insert)
+  DBUG_ASSERT(!concurrent_insert ||
+              info->lock.type == TL_WRITE_CONCURRENT_INSERT);
+  if (concurrent_insert || !info->autocommit)
   {
-    DBUG_ASSERT(info->lock.type == TL_WRITE_CONCURRENT_INSERT);
     info->row_flag|= ROW_FLAG_TRANSID;
     info->row_base_length+= TRANSID_SIZE;
   }

@@ -73,11 +73,10 @@ static bool trans_check(THD *thd)
 
   if (unlikely(thd->in_sub_stmt))
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
-  if (thd->transaction->xid_state.is_explicit_XA())
-    thd->transaction->xid_state.er_xaer_rmfail();
-  else
+  if (!thd->transaction->xid_state.is_explicit_XA())
     DBUG_RETURN(FALSE);
 
+  thd->transaction->xid_state.er_xaer_rmfail();
   DBUG_RETURN(TRUE);
 }
 
