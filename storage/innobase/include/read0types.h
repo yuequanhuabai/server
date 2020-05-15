@@ -32,16 +32,6 @@ Created 2/16/1997 Heikki Tuuri
 #include <algorithm>
 
 
-/** View is not visible to purge thread. */
-#define READ_VIEW_STATE_CLOSED 0
-
-/** View is being opened, purge thread must wait for state change. */
-#define READ_VIEW_STATE_SNAPSHOT 1
-
-/** View is visible to purge thread. */
-#define READ_VIEW_STATE_OPEN 2
-
-
 /**
   Read view lists the trx ids of those transactions for which a consistent read
   should not see the modifications to the database.
@@ -51,33 +41,18 @@ class ReadView
   /**
     View state.
 
-    It is not defined as enum as it has to be updated using atomic operations.
-    Possible values are READ_VIEW_STATE_CLOSED, READ_VIEW_STATE_SNAPSHOT and
-    READ_VIEW_STATE_OPEN.
+    Implemented as atomic to allow mutex-free view close and re-use.
+    Non-owner thread is allowed to call is_open() alone without mutex
+    protection as well. E.g. trx_sys.view_count() does this.
 
-    Possible state transfers...
-
-    Start view open:
-    READ_VIEW_STATE_CLOSED -> READ_VIEW_STATE_SNAPSHOT
-
-    Complete view open:
-    READ_VIEW_STATE_SNAPSHOT -> READ_VIEW_STATE_OPEN
-
-    Close view:
-    READ_VIEW_STATE_OPEN -> READ_VIEW_STATE_CLOSED
+    If non-owner thread intends to access other members as well, both
+    is_open() and other members accesses must be pretected by trx->mutex.
+    E.g. trx_sys.clone_oldest_view().
   */
-  std::atomic<uint32_t> m_state;
-
-
-  /** m_state getter for ReadView owner thread */
-  uint32_t state() const
-  {
-    return m_state.load(std::memory_order_relaxed);
-  }
-
+  std::atomic<bool> m_open;
 
 public:
-  ReadView(): m_state(READ_VIEW_STATE_CLOSED), m_low_limit_id(0) {}
+  ReadView(): m_open(false), m_low_limit_id(0) {}
 
 
   /**
@@ -92,6 +67,9 @@ public:
   void copy(const ReadView &other)
   {
     ut_ad(&other != this);
+    if (!other.is_open())
+      return;
+
     if (m_low_limit_no > other.m_low_limit_no)
       m_low_limit_no= other.m_low_limit_no;
     if (m_low_limit_id > other.m_low_limit_id)
@@ -140,38 +118,14 @@ loop:
   /**
     Closes the view.
 
-    View becomes not visible to purge thread.
-
-    This method is intended to be called by ReadView owner thread, thus
-    m_state cannot change.
+    View becomes not visible to purge thread. Intended to be called by ReadView
+    owner thread.
   */
-  void close()
-  {
-    ut_ad(state() == READ_VIEW_STATE_CLOSED ||
-          state() == READ_VIEW_STATE_OPEN);
-    m_state.store(READ_VIEW_STATE_CLOSED, std::memory_order_relaxed);
-  }
+  void close() { m_open.store(false, std::memory_order_relaxed); }
 
 
-  /** m_state getter for trx_sys::clone_oldest_view() trx_sys::size(). */
-  uint32_t get_state() const
-  {
-    return m_state.load(std::memory_order_acquire);
-  }
-
-
-  /**
-    Returns true if view is open.
-
-    This method is intended to be called by ReadView owner thread, thus
-    m_state cannot change.
-  */
-  bool is_open() const
-  {
-    ut_ad(state() == READ_VIEW_STATE_OPEN ||
-          state() == READ_VIEW_STATE_CLOSED);
-    return state() == READ_VIEW_STATE_OPEN;
-  }
+  /** Returns true if view is open. */
+  bool is_open() const { return m_open.load(std::memory_order_relaxed); }
 
 
   /**
@@ -193,6 +147,19 @@ loop:
     ut_ad(id > 0);
     ut_ad(m_creator_trx_id == 0);
     m_creator_trx_id= id;
+  }
+
+
+  /**
+    Writes the limits to the file.
+    @param file file to write to
+  */
+  void print_limits(FILE *file) const
+  {
+    if (is_open())
+      fprintf(file, "Trx read view will not see trx with"
+                    " id >= " TRX_ID_FMT ", sees < " TRX_ID_FMT "\n",
+                    m_low_limit_id, m_up_limit_id);
   }
 
 
@@ -237,17 +204,6 @@ loop:
 	bool sees(trx_id_t id) const
 	{
 		return(id < m_up_limit_id);
-	}
-
-	/**
-	Write the limits to the file.
-	@param file		file to write to */
-	void print_limits(FILE* file) const
-	{
-		fprintf(file,
-			"Trx read view will not see trx with"
-			" id >= " TRX_ID_FMT ", sees < " TRX_ID_FMT "\n",
-			m_low_limit_id, m_up_limit_id);
 	}
 
 	/**

@@ -743,13 +743,27 @@ public:
 
   int iterate(trx_t *caller_trx, my_hash_walk_action action, void *argument)
   {
-    LF_PINS *pins= caller_trx ? get_pins(caller_trx) : lf_hash_get_pins(&hash);
-    ut_a(pins);
 #ifdef UNIV_DEBUG
     debug_iterator_arg debug_arg= { action, argument };
     action= reinterpret_cast<my_hash_walk_action>(debug_iterator);
     argument= &debug_arg;
 #endif
+    return iterate_no_debug(caller_trx, action, argument);
+  }
+
+
+  /**
+    No-debug iterator.
+
+    snapshot_ids iterator is called under trx->mutex protection, which
+    is not compatible with debug_iterator. Let it iterate directly.
+  */
+
+  int iterate_no_debug(trx_t *caller_trx, my_hash_walk_action action,
+                       void *argument)
+  {
+    LF_PINS *pins= caller_trx ? get_pins(caller_trx) : lf_hash_get_pins(&hash);
+    ut_a(pins);
     int res= lf_hash_iterate(&hash, pins, action, argument);
     if (!caller_trx)
       lf_hash_put_pins(pins);
@@ -814,7 +828,7 @@ public:
   */
   MY_ALIGNED(CACHE_LINE_SIZE) Atomic_counter<uint32_t> rseg_history_len;
 
-  /** Mutex protecting trx_list. */
+  /** Mutex protecting trx_list AND NOTHING ELSE. */
   MY_ALIGNED(CACHE_LINE_SIZE) mutable TrxSysMutex mutex;
 
   /** List of all transactions. */
@@ -970,7 +984,7 @@ public:
 
     ids->clear();
     ids->reserve(rw_trx_hash.size() + 32);
-    rw_trx_hash.iterate(caller_trx,
+    rw_trx_hash.iterate_no_debug(caller_trx,
                         reinterpret_cast<my_hash_walk_action>(copy_one_id),
                         &arg);
 
@@ -1098,7 +1112,7 @@ public:
     for (const trx_t *trx= UT_LIST_GET_FIRST(trx_list); trx;
          trx= UT_LIST_GET_NEXT(trx_list, trx))
     {
-      if (trx->read_view.get_state() == READ_VIEW_STATE_OPEN)
+      if (trx->read_view.is_open())
         ++count;
     }
     mutex_exit(&mutex);
