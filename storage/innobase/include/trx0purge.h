@@ -211,7 +211,7 @@ public:
     uninitialised. Real initialisation happens in create().
   */
 
-  purge_sys_t(): m_enabled(false), heap(nullptr) {}
+  purge_sys_t(): m_enabled(false), view(true), heap(nullptr) {}
 
   /** Create the instance */
   void create();

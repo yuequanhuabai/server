@@ -755,7 +755,7 @@ private:
 
 
 public:
-	mutable TrxMutex mutex;		/*!< Mutex protecting the fields
+	TrxMutex	mutex;		/*!< Mutex protecting the fields
 					state and lock (except some fields
 					of lock, which are protected by
 					lock_sys.mutex) */

@@ -236,10 +236,10 @@ void ReadView::open(trx_t *trx)
       m_open.store(true, std::memory_order_relaxed);
     else
     {
-      mutex_enter(&trx->mutex);
+      mutex_enter(&mutex);
       snapshot(trx);
       m_open.store(true, std::memory_order_relaxed);
-      mutex_exit(&trx->mutex);
+      mutex_exit(&mutex);
     }
   }
 }
@@ -259,10 +259,6 @@ void trx_sys_t::clone_oldest_view()
   /* Find oldest view. */
   for (const trx_t *trx= UT_LIST_GET_FIRST(trx_list); trx;
        trx= UT_LIST_GET_NEXT(trx_list, trx))
-  {
-    mutex_enter(&trx->mutex);
     purge_sys.view.copy(trx->read_view);
-    mutex_exit(&trx->mutex);
-  }
   mutex_exit(&mutex);
 }

@@ -743,27 +743,13 @@ public:
 
   int iterate(trx_t *caller_trx, my_hash_walk_action action, void *argument)
   {
+    LF_PINS *pins= caller_trx ? get_pins(caller_trx) : lf_hash_get_pins(&hash);
+    ut_a(pins);
 #ifdef UNIV_DEBUG
     debug_iterator_arg debug_arg= { action, argument };
     action= reinterpret_cast<my_hash_walk_action>(debug_iterator);
     argument= &debug_arg;
 #endif
-    return iterate_no_debug(caller_trx, action, argument);
-  }
-
-
-  /**
-    No-debug iterator.
-
-    snapshot_ids iterator is called under trx->mutex protection, which
-    is not compatible with debug_iterator. Let it iterate directly.
-  */
-
-  int iterate_no_debug(trx_t *caller_trx, my_hash_walk_action action,
-                       void *argument)
-  {
-    LF_PINS *pins= caller_trx ? get_pins(caller_trx) : lf_hash_get_pins(&hash);
-    ut_a(pins);
     int res= lf_hash_iterate(&hash, pins, action, argument);
     if (!caller_trx)
       lf_hash_put_pins(pins);
@@ -984,7 +970,7 @@ public:
 
     ids->clear();
     ids->reserve(rw_trx_hash.size() + 32);
-    rw_trx_hash.iterate_no_debug(caller_trx,
+    rw_trx_hash.iterate(caller_trx,
                         reinterpret_cast<my_hash_walk_action>(copy_one_id),
                         &arg);
 

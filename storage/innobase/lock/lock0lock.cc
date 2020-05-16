@@ -4595,10 +4595,7 @@ lock_trx_print_wait_and_mvcc_state(FILE* file, const trx_t* trx, time_t now)
 	fprintf(file, "---");
 
 	trx_print_latched(file, trx, 600);
-
-	mutex_enter(&trx->mutex);
 	trx->read_view.print_limits(file);
-	mutex_exit(&trx->mutex);
 
 	if (trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
 

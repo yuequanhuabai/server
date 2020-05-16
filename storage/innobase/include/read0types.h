@@ -50,9 +50,18 @@ class ReadView
     E.g. trx_sys.clone_oldest_view().
   */
   std::atomic<bool> m_open;
+  /** For synchronisation with purge coordinator. */
+  mutable ib_mutex_t mutex;
+  bool purge;
 
 public:
-  ReadView(): m_open(false), m_low_limit_id(0) {}
+  ReadView(bool purge_tag= false): m_open(false), purge(purge_tag),
+                                   m_low_limit_id(0)
+  {
+    if (!purge_tag)
+      mutex_create(LATCH_ID_READ_VIEW, &mutex);
+  }
+  ~ReadView() { if (!purge) mutex_free(&mutex); }
 
 
   /**
@@ -67,8 +76,12 @@ public:
   void copy(const ReadView &other)
   {
     ut_ad(&other != this);
+    mutex_enter(&other.mutex);
     if (!other.is_open())
+    {
+      mutex_exit(&other.mutex);
       return;
+    }
 
     if (m_low_limit_no > other.m_low_limit_no)
       m_low_limit_no= other.m_low_limit_no;
@@ -101,6 +114,7 @@ loop:
 
     m_up_limit_id= m_ids.empty() ? m_low_limit_id : m_ids.front();
     ut_ad(m_up_limit_id <= m_low_limit_id);
+    mutex_exit(&other.mutex);
   }
 
 
@@ -156,10 +170,12 @@ loop:
   */
   void print_limits(FILE *file) const
   {
+    mutex_enter(&mutex);
     if (is_open())
       fprintf(file, "Trx read view will not see trx with"
                     " id >= " TRX_ID_FMT ", sees < " TRX_ID_FMT "\n",
                     m_low_limit_id, m_up_limit_id);
+    mutex_exit(&mutex);
   }
 
 
