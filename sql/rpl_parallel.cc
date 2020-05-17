@@ -1374,7 +1374,7 @@ handle_rpl_parallel_thread(void *arg)
         }
         thd->reset_killed();
       }
-      if (end_of_group )
+      if (end_of_group)
       {
         in_event_group= false;
         //TODO
@@ -2209,7 +2209,8 @@ rpl_parallel_entry::choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
     */
     if (rgi->gtid_ev_flags3 & (Gtid_log_event::FL_START_ALTER_E1 |
                                 Gtid_log_event::FL_COMMIT_ALTER_E1 |
-                                Gtid_log_event::FL_ROLLBACK_ALTER_E1 ))
+                                Gtid_log_event::FL_ROLLBACK_ALTER_E1 ) ||
+            pending_start_alters)
       get_split_alter_thread_id_part_1(rpl_threads, rgi->gtid_ev_flags3,
                                        &idx, rpl_thread_max, this);
     rpl_thread_idx= idx;
@@ -2478,12 +2479,14 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
     {
       if ((rpt= e->rpl_threads[j]))
       {
+        if (rpt->thd->rgi_slave &&
+            (rpt->thd->rgi_slave->gtid_ev_flags3 & Gtid_log_event::FL_START_ALTER_E1))
+          continue;
         mysql_mutex_lock(&rpt->LOCK_rpl_thread);
         //Dont wait for SA workers , But wait for CA/RA workers
         //If CA/RA is executed that means corresponding SA is also executed
         //And remaning SA will never recieve CA/RA so we have to manualy send it
-        while (rpt->current_owner == &e->rpl_threads[j] &&
-               !(rpt->thd->rgi_slave->gtid_ev_flags3 & Gtid_log_event::FL_START_ALTER_E1))
+        while (rpt->current_owner == &e->rpl_threads[j])
           mysql_cond_wait(&rpt->COND_rpl_thread_stop, &rpt->LOCK_rpl_thread);
         mysql_mutex_unlock(&rpt->LOCK_rpl_thread);
       }

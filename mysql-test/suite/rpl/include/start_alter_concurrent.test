@@ -223,8 +223,6 @@ insert into t10 values(3,2,1,1);
 --connection con1
 --error ER_DUP_ENTRY
 --reap
-show binlog events;
---sync_slave_with_master
 --connection con2
 --error ER_DUP_ENTRY
 --reap

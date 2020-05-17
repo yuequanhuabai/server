@@ -9437,7 +9437,7 @@ static bool write_start_alter(THD *thd, bool* partial_alter, start_alter_info *i
   }
   else if (opt_binlog_split_alter)
   {
-    char *send_query= (char *)thd->alloc(thd->query_length() + 20);
+    char *send_query= (char *)thd->alloc(thd->query_length() + 50);
     thd->gtid_flags3|= Gtid_log_event::FL_START_ALTER_E1;
     sprintf(send_query, "/*!100001  %s EXECUTE = UNTIL COMMIT %ld */",
                                       thd->query(), (long)thd->thread_id);
@@ -9541,13 +9541,16 @@ bool mysql_alter_table(THD *thd, const LEX_CSTRING *new_db,
                        uint order_num, ORDER *order, bool ignore)
 {
   bool engine_changed;
-  char *send_query= (char *)thd->alloc(thd->query_length() + 20);
+  char *send_query= (char *)thd->alloc(thd->query_length() + 50);
   bool partial_alter= false;
-  start_alter_info *info= get_new_start_alter_info(thd);
+  start_alter_info *info= NULL;
   Master_info *mi= NULL;
-  if (thd->slave_thread)
-    mi= thd->rgi_slave->rli->mi;
   ulong start_alter_id= thd->lex->alter_info.alter_identifier;
+  if (thd->slave_thread && start_alter_id && !thd->direct_commit_alter)
+  {
+    mi= thd->rgi_slave->rli->mi;
+    info= get_new_start_alter_info(thd);
+  }
   DBUG_ENTER("mysql_alter_table");
 
   /*
@@ -9605,9 +9608,11 @@ bool mysql_alter_table(THD *thd, const LEX_CSTRING *new_db,
   char *complete_table_name= (char *)thd->alloc(table_list->table_name.length +
                               new_db->length + 2);
   sprintf(complete_table_name,"%s.%s",table_list->table_name.str, new_db->str);
-  info->table_name= complete_table_name;
-  if (mi)
+  if (start_alter_id && !thd->direct_commit_alter)
+  {
+    info->table_name= complete_table_name;
     check_and_remove_duplicate_alter(mi, complete_table_name);
+  }
   bool error= open_tables(thd, &table_list, &tables_opened, 0,
                           &alter_prelocking_strategy);
   thd->open_options&= ~HA_OPEN_FOR_ALTER;

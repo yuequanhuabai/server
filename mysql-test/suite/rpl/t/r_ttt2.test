@@ -1,4 +1,3 @@
---source include/have_binlog_format_row.inc
 --source include/have_innodb.inc
 --source include/master-slave.inc
 
@@ -33,9 +32,6 @@ set gtid_domain_id=10;
 set gtid_domain_id=10;
 --send insert into t2 values(1,2);
 
-#--source include/kill_mysqld.inc
-#--let $rpl_server_number= 1
-#--source include/rpl_stop_server.inc
 --connection con1
 --reap
 --connection con2
@@ -46,24 +42,19 @@ set gtid_domain_id=10;
 --reap
 create table t3( a int primary key, b int) engine=innodb;
 
-show binlog events;
 
---sleep 5
---connection slave
-show binlog events;
-
---connection master
 --sync_slave_with_master
-show binlog events;
 show create table t1;
 
 --connection master
 drop table t1,t2,t3;
 set global binlog_split_alter= false;
+set global debug_dbug="";
 
---connection slave
-stop slave;
+--sync_slave_with_master
+--source include/stop_slave.inc
 SET GLOBAL slave_parallel_threads=0;
 set global slave_parallel_mode=conservative;
-start slave;
+set global debug_dbug="";
+--source include/start_slave.inc
 --source include/rpl_end.inc

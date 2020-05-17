@@ -130,10 +130,13 @@ Master_info::~Master_info()
   mysql_mutex_destroy(&data_lock);
   mysql_mutex_destroy(&sleep_lock);
   mysql_mutex_destroy(&start_stop_lock);
+  mysql_mutex_destroy(&start_alter_lock);
+  mysql_mutex_destroy(&start_alter_list_lock);
   mysql_cond_destroy(&data_cond);
   mysql_cond_destroy(&start_cond);
   mysql_cond_destroy(&stop_cond);
   mysql_cond_destroy(&sleep_cond);
+  mysql_cond_destroy(&start_alter_list_cond);
 }
 
 /**

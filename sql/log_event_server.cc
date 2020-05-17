@@ -1824,41 +1824,39 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
         thd->variables.option_bits|= OPTION_MASTER_SQL_ERROR;
         thd->variables.option_bits&= ~OPTION_GTID_BEGIN;
       }
+      /* Execute the query (note that we bypass dispatch_command()) */
+      Parser_state parser_state;
+      if (!parser_state.init(thd, thd->query(), thd->query_length()))
       {
-        /* Execute the query (note that we bypass dispatch_command()) */
-        Parser_state parser_state;
-        if (!parser_state.init(thd, thd->query(), thd->query_length()))
-        {
-          DBUG_ASSERT(thd->m_digest == NULL);
-          thd->m_digest= & thd->m_digest_state;
-          DBUG_ASSERT(thd->m_statement_psi == NULL);
-          thd->m_statement_psi= MYSQL_START_STATEMENT(&thd->m_statement_state,
-                                                      stmt_info_rpl.m_key,
-                                                      thd->db.str, thd->db.length,
-                                                      thd->charset());
-          THD_STAGE_INFO(thd, stage_init);
-          MYSQL_SET_STATEMENT_TEXT(thd->m_statement_psi, thd->query(), thd->query_length());
-          if (thd->m_digest != NULL)
-            thd->m_digest->reset(thd->m_token_array, max_digest_length);
+        DBUG_ASSERT(thd->m_digest == NULL);
+        thd->m_digest= & thd->m_digest_state;
+        DBUG_ASSERT(thd->m_statement_psi == NULL);
+        thd->m_statement_psi= MYSQL_START_STATEMENT(&thd->m_statement_state,
+                                                    stmt_info_rpl.m_key,
+                                                    thd->db.str, thd->db.length,
+                                                    thd->charset());
+        THD_STAGE_INFO(thd, stage_init);
+        MYSQL_SET_STATEMENT_TEXT(thd->m_statement_psi, thd->query(), thd->query_length());
+        if (thd->m_digest != NULL)
+          thd->m_digest->reset(thd->m_token_array, max_digest_length);
 
-           if (thd->slave_thread)
-           {
-             /*
-               To be compatible with previous releases, the slave thread uses the global
-               log_slow_disabled_statements value, wich can be changed dynamically, so we
-               have to set the sql_log_slow respectively.
-             */
-             thd->variables.sql_log_slow= !MY_TEST(global_system_variables.log_slow_disabled_statements & LOG_SLOW_DISABLE_SLAVE);
-           }
+         if (thd->slave_thread)
+         {
+           /*
+             To be compatible with previous releases, the slave thread uses the global
+             log_slow_disabled_statements value, wich can be changed dynamically, so we
+             have to set the sql_log_slow respectively.
+           */
+           thd->variables.sql_log_slow= !MY_TEST(global_system_variables.log_slow_disabled_statements & LOG_SLOW_DISABLE_SLAVE);
+         }
 
-          mysql_parse(thd, thd->query(), thd->query_length(), &parser_state,
-                      FALSE, FALSE);
-          /* Finalize server status flags after executing a statement. */
-          thd->update_server_status();
-          log_slow_statement(thd);
-          thd->lex->restore_set_statement_var();
-          }
-       }
+        mysql_parse(thd, thd->query(), thd->query_length(), &parser_state,
+                    FALSE, FALSE);
+        /* Finalize server status flags after executing a statement. */
+        thd->update_server_status();
+        log_slow_statement(thd);
+        thd->lex->restore_set_statement_var();
+      }
       thd->variables.option_bits&= ~OPTION_MASTER_SQL_ERROR;
     }
     else
@@ -1885,6 +1883,7 @@ START SLAVE; . Query: '%s'", expected_error, thd->query());
       }
       goto end;
     }
+
     /* If the query was not ignored, it is printed to the general log */
     if (likely(!thd->is_error()) ||
         thd->get_stmt_da()->sql_errno() != ER_SLAVE_IGNORED_TABLE)

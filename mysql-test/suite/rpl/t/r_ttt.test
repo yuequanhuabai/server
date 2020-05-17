@@ -1,11 +1,10 @@
---source include/have_binlog_format_row.inc
 --source include/have_innodb.inc
 --source include/master-slave.inc
 
 --connection slave
 set global debug_dbug="+d,start_alter_delay_slave";
 stop slave;
-SET GLOBAL slave_parallel_threads=2;
+SET GLOBAL slave_parallel_threads=3;
 set global slave_parallel_mode=optimistic;
 change master to master_use_gtid=slave_pos;
 start slave;
@@ -24,9 +23,7 @@ alter table t1 add column c int;
 insert into t1 values(1,1, NULL);
 --error ER_DUP_ENTRY
 alter table t1 change a a int unique ;
-show binlog events;
 --sync_slave_with_master
-source include/show_binlog_events.inc;
 show create table t1;
 --connection master
 drop table t1;
@@ -106,25 +103,26 @@ set gtid_domain_id=23;
 --reap
 --connection con6
 --reap
+
 --connection master
-show binlog events;
+select @@gtid_binlog_state;
+--source include/save_master_gtid.inc
 
 --connection slave
+--source include/sync_with_master_gtid.inc
+select @@gtid_binlog_state;
 select @@gtid_slave_pos;
---connection master
---sync_slave_with_master
-select @@gtid_slave_pos;
-show binlog events;
+show create table t6;
 
 --connection master
 drop table t1,t2,t3,t4,t5,t6;
 set global binlog_split_alter=false;
 set global debug_dbug="";
 
---connection slave
-stop slave;
+--sync_slave_with_master
+--source include/stop_slave.inc
 SET GLOBAL slave_parallel_threads=0;
 set global slave_parallel_mode=conservative;
 set global debug_dbug="";
-start slave;
+--source include/start_slave.inc
 --source include/rpl_end.inc
