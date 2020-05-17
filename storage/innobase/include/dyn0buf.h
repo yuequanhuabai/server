@@ -167,7 +167,7 @@ public:
 		friend class dyn_buf_t;
 	};
 
-	typedef intrusive::list<block_t> list_t;
+	typedef intrusive::sized_list<block_t> list_t;
 
 	enum { MAX_DATA_SIZE = block_t::MAX_DATA_SIZE};
 

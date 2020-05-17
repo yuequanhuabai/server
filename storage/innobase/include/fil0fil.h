@@ -39,6 +39,7 @@ Created 10/25/1995 Heikki Tuuri
 
 struct unflushed_spaces_tag_t;
 struct rotation_list_tag_t;
+using intrusive::sized_list;
 
 // Forward declaration
 extern ibool srv_use_doublewrite_buf;
@@ -165,17 +166,17 @@ struct fil_space_t : intrusive::list_node<unflushed_spaces_tag_t>,
 	UT_LIST_NODE_T(fil_space_t) named_spaces;
 				/*!< list of spaces for which MLOG_FILE_NAME
 				records have been issued */
-	/** Checks that this tablespace in a list of unflushed tablespaces.
-	@return true if in a list */
-	bool is_in_unflushed_spaces() const;
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** Checks that this tablespace needs key rotation.
-	@return true if in a rotation list */
-	bool is_in_rotation_list() const;
 
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
+
+	/** Checks that this tablespace in a list of unflushed tablespaces. */
+	bool is_in_unflushed_spaces;
+
+	/** Checks that this tablespace needs key rotation. */
+	bool is_in_rotation_list;
 
 	/** True if the device this filespace is on supports atomic writes */
 	bool		atomic_write_supported;
@@ -507,7 +508,7 @@ struct fil_system_t {
 					not put to this list: they are opened
 					after the startup, and kept open until
 					shutdown */
-	intrusive::list<fil_space_t, unflushed_spaces_tag_t> unflushed_spaces;
+	sized_list<fil_space_t, unflushed_spaces_tag_t> unflushed_spaces;
 					/*!< list of those
 					tablespaces whose files contain
 					unflushed writes; those spaces have
