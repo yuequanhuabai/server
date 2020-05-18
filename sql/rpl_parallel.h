@@ -101,7 +101,6 @@ struct rpl_parallel_thread {
   /*
     0  = No start alter assigned
    >0 = Start alter assigned
-   -1 = Commit/Rollback assigned
   */
   int64 current_start_alter_id;
   mysql_mutex_t LOCK_rpl_thread;
@@ -144,7 +143,7 @@ struct rpl_parallel_thread {
     size_t event_size;
   } *event_queue, *last_in_queue;
   uint64 queued_size;
-  // SA rgi
+  // Last Start Alter rgi
   rpl_group_info *last_SA_rgi;
   /* These free lists are protected by LOCK_rpl_thread. */
   queued_event *qev_free_list;
@@ -261,8 +260,6 @@ struct rpl_parallel_thread_pool {
   void destroy();
   struct rpl_parallel_thread *get_thread(rpl_parallel_thread **owner,
                                          rpl_parallel_entry *entry);
-  struct rpl_parallel_thread *get_thread_split_alter(rpl_parallel_thread **owner,
-                                         rpl_parallel_entry *entry);
   void release_thread(rpl_parallel_thread *rpt);
 };
 
@@ -279,7 +276,6 @@ struct rpl_parallel_entry {
   uint32 need_sub_id_signal;
   uint64 last_commit_id;
   uint32 pending_start_alters;
-  uint32 start_alter_reserved;
   bool active;
   /*
     Set when SQL thread is shutting down, and no more events can be processed,
@@ -310,8 +306,6 @@ struct rpl_parallel_entry {
   rpl_parallel_thread **rpl_threads;
   uint32 rpl_thread_max;
   uint32 rpl_thread_idx;
-  //Needed for round robin of Start Alter and Interleaved DMLs
-  uint32 rpl_start_alter_idx;
   /*
     The sub_id of the last transaction to commit within this domain_id.
     Must be accessed under LOCK_parallel_entry protection.
@@ -368,8 +362,6 @@ struct rpl_parallel_entry {
   rpl_parallel_thread * choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
                                       PSI_stage_info *old_stage, enum Log_event_type typ,
                                       uint64 thread_id);
-  rpl_parallel_thread * choose_thread_internal(rpl_group_info *rgi, bool *did_enter_cond,
-                                               PSI_stage_info *old_stage, uint32 idx);
   int queue_master_restart(rpl_group_info *rgi,
                            Format_description_log_event *fdev);
 };

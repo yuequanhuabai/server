@@ -1378,12 +1378,11 @@ handle_rpl_parallel_thread(void *arg)
       {
         in_event_group= false;
         //TODO
-        if (1)
-        //if (!rgi->finish_event_group_called)
-        {
+        //if (1)
+        if (!rgi->finish_event_group_called)
           finish_event_group(rpt, event_gtid_sub_id, entry, rgi);
+        else
           rgi->finish_event_group_called= false;
-        }
         rpt->loc_free_rgi(rgi);
         thd->rgi_slave= group_rgi= rgi= NULL;
         skip_event_group= false;
@@ -1527,7 +1526,6 @@ rpl_parallel_change_thread_count(rpl_parallel_thread_pool *pool,
                                  uint32 new_count, bool force)
 {
   uint32 i;
-  uint32 j=0;
 
   rpl_parallel_thread **old_list= NULL;
   rpl_parallel_thread **new_list= NULL;
@@ -1639,7 +1637,6 @@ rpl_parallel_change_thread_count(rpl_parallel_thread_pool *pool,
     }
     while (rpt->rgi_free_list)
     {
-        j++;
       rpl_group_info *next= rpt->rgi_free_list->next;
       delete rpt->rgi_free_list;
       rpt->rgi_free_list= next;
@@ -2061,25 +2058,6 @@ rpl_parallel_thread_pool::get_thread(rpl_parallel_thread **owner,
   return rpt;
 }
 
-//We call this when we already have acquired LOCK_rpl_thread_pool mutex
-struct rpl_parallel_thread *
-rpl_parallel_thread_pool::get_thread_split_alter(rpl_parallel_thread **owner,
-                                     rpl_parallel_entry *entry)
-{
-  rpl_parallel_thread *rpt;
-
-  DBUG_ASSERT(count > 0);
-  while (unlikely(busy) || !(rpt= free_list))
-    mysql_cond_wait(&COND_rpl_thread_pool, &LOCK_rpl_thread_pool);
-  free_list= rpt->next;
-  mysql_mutex_lock(&rpt->LOCK_rpl_thread);
-  rpt->current_owner= owner;
-  rpt->current_entry= entry;
-
-  return rpt;
-}
-
-
 /*
   Release a thread to the thread pool.
   The thread should be locked, and should not have any work queued for it.
@@ -2100,14 +2078,13 @@ rpl_parallel_thread_pool::release_thread(rpl_parallel_thread *rpt)
   mysql_mutex_unlock(&LOCK_rpl_thread_pool);
 }
 
-static void get_split_alter_thread_id_part_1(rpl_parallel_thread **rpl_threads,
-                                              uint16 flags3, uint32 *idx,
-                                       uint32 rpl_thread_max, rpl_parallel_entry *e)
+static void get_split_alter_thread_id_part_1(rpl_parallel_entry *e,  uint16 flags3,
+                                              uint32 *idx)
 {
-  for(uint i= 0; i < rpl_thread_max; i++)
+  for(uint i= 0; i < e->rpl_thread_max; i++)
   {
-    if (!rpl_threads[i] ||  rpl_threads[i]->current_owner != &rpl_threads[i]
-               ||  !rpl_threads[i]->current_start_alter_id)
+    if (!e->rpl_threads[i] ||  e->rpl_threads[i]->current_owner != &e->rpl_threads[i]
+               ||  !e->rpl_threads[i]->current_start_alter_id)
     {
       //This condition will hit atleast one time no matter what happens
       //worker per Domain id can have issues
@@ -2120,10 +2097,8 @@ static void get_split_alter_thread_id_part_1(rpl_parallel_thread **rpl_threads,
 }
 //TODO Change Signature
 //will return corrosponding SA id for CA/RA
-static int get_split_alter_thread_id_part_2(rpl_parallel_thread **rpl_threads,
-                                              uint16 flags3, uint32 rpl_thread_max,
-                                              uint32 rpt_index, uint64 thread_id,
-                                              rpl_parallel_entry *e)
+static int get_split_alter_thread_id_part_2(rpl_parallel_entry *e, uint16 flags3,
+                                             uint64 thread_id)
 {
   assert(thread_id);
   /*
@@ -2140,28 +2115,28 @@ static int get_split_alter_thread_id_part_2(rpl_parallel_thread **rpl_threads,
                               Gtid_log_event::FL_ROLLBACK_ALTER_E1 ))
   {
     //Free the corrosponding rpt current_start_alter_id
-    for(uint i= 0; i < rpl_thread_max; i++)
+    for(uint i= 0; i < e->rpl_thread_max; i++)
     {
-      if(rpl_threads[i] && rpl_threads[i]->current_start_alter_id == (int64)thread_id)
+      if(e->rpl_threads[i] && e->rpl_threads[i]->current_start_alter_id == (int64)thread_id)
       {
-        mysql_mutex_lock(&rpl_threads[i]->LOCK_rpl_thread);
-        rpl_threads[i]->current_start_alter_id= 0;
-        mysql_mutex_unlock(&rpl_threads[i]->LOCK_rpl_thread);
-    sql_print_information("Setiya part 2 inside Commit alter pool_worker_id= %d alter_id= %d, entry->rpl_threads_index= %d Commit ",
-         rpl_threads[rpt_index] - *global_rpl_thread_pool.threads, thread_id, rpt_index);
+        mysql_mutex_lock(&e->rpl_threads[i]->LOCK_rpl_thread);
+        e->rpl_threads[i]->current_start_alter_id= 0;
+        mysql_mutex_unlock(&e->rpl_threads[i]->LOCK_rpl_thread);
+    sql_print_information("Setiya part 2 inside Commit alter pool_worker_id= %d alter_id= %d, entry->rpl_thread_idx= %d Commit ",
+         e->rpl_threads[e->rpl_thread_idx] - *global_rpl_thread_pool.threads, thread_id, e->rpl_thread_idx);
         return i;
       }
     }
-    sql_print_information("Setiya part 2 inside Commit alter pool_worker_id= %d alter_id= %d, entry->rpl_threads_index= %d Commit ",
-         rpl_threads[rpt_index] - *global_rpl_thread_pool.threads, thread_id, rpt_index);
+    sql_print_information("Setiya part 2 inside Commit alter pool_worker_id= %d alter_id= %d, entry->rpl_thread_idx= %d Commit ",
+         e->rpl_threads[e->rpl_thread_idx] - *global_rpl_thread_pool.threads, thread_id, e->rpl_thread_idx);
   }
   else if ((flags3 & Gtid_log_event::FL_START_ALTER_E1))
   {
-    mysql_mutex_lock(&rpl_threads[rpt_index]->LOCK_rpl_thread);
-    rpl_threads[rpt_index]->current_start_alter_id= thread_id;
-    mysql_mutex_unlock(&rpl_threads[rpt_index]->LOCK_rpl_thread);
+    mysql_mutex_lock(&e->rpl_threads[e->rpl_thread_idx]->LOCK_rpl_thread);
+    e->rpl_threads[e->rpl_thread_idx]->current_start_alter_id= thread_id;
+    mysql_mutex_unlock(&e->rpl_threads[e->rpl_thread_idx]->LOCK_rpl_thread);
     sql_print_information("Setiya part 2 inside Start alter pool_worker_id= %d alter_id= %d, entry->rpl_threads_index= %d  Start ",
-             rpl_threads[rpt_index] - *global_rpl_thread_pool.threads, thread_id, rpt_index);
+             e->rpl_threads[e->rpl_thread_idx] - *global_rpl_thread_pool.threads, thread_id, e->rpl_thread_idx);
   }
   return -1;
 }
@@ -2197,6 +2172,8 @@ rpl_parallel_entry::choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
                                   uint64 thread_id)
 {
   uint32 idx;
+  Relay_log_info *rli= rgi->rli;
+  rpl_parallel_thread *thr;
 
   idx= rpl_thread_idx;
   if (typ == GTID_EVENT)
@@ -2211,8 +2188,8 @@ rpl_parallel_entry::choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
                                 Gtid_log_event::FL_COMMIT_ALTER_E1 |
                                 Gtid_log_event::FL_ROLLBACK_ALTER_E1 ) ||
             pending_start_alters)
-      get_split_alter_thread_id_part_1(rpl_threads, rgi->gtid_ev_flags3,
-                                       &idx, rpl_thread_max, this);
+      get_split_alter_thread_id_part_1(this, rgi->gtid_ev_flags3,
+                                       &idx);
     rpl_thread_idx= idx;
   }
   else if (typ == QUERY_EVENT && rgi->gtid_ev_flags3 &
@@ -2220,8 +2197,8 @@ rpl_parallel_entry::choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
                                    Gtid_log_event::FL_COMMIT_ALTER_E1 |
                                    Gtid_log_event::FL_ROLLBACK_ALTER_E1 ))
   {
-    int SA_idx= get_split_alter_thread_id_part_2(rpl_threads, rgi->gtid_ev_flags3,
-                                        rpl_thread_max, idx, thread_id, this);
+    int SA_idx= get_split_alter_thread_id_part_2(this, rgi->gtid_ev_flags3,
+                                                  thread_id);
 
     mysql_mutex_lock(&global_rpl_thread_pool.LOCK_rpl_thread_pool);
     if (rgi->gtid_ev_flags3 & Gtid_log_event::FL_START_ALTER_E1)
@@ -2245,15 +2222,7 @@ rpl_parallel_entry::choose_thread(rpl_group_info *rgi, bool *did_enter_cond,
     }
     mysql_mutex_unlock(&global_rpl_thread_pool.LOCK_rpl_thread_pool);
   }
-  return choose_thread_internal(rgi, did_enter_cond, old_stage, idx);
-}
-
-rpl_parallel_thread *
-rpl_parallel_entry::choose_thread_internal(rpl_group_info *rgi, bool *did_enter_cond,
-                                           PSI_stage_info *old_stage, uint32 idx)
-{
-  rpl_parallel_thread *thr= rpl_threads[idx];
-  Relay_log_info *rli= rgi->rli;
+  thr= rpl_threads[idx];
   if (thr)
   {
     *did_enter_cond= false;
@@ -2394,7 +2363,6 @@ rpl_parallel::find(uint32 domain_id)
     e->stop_on_error_sub_id= (uint64)ULONGLONG_MAX;
     e->pause_sub_id= (uint64)ULONGLONG_MAX;
     e->pending_start_alters= 0;
-    e->start_alter_reserved= 0;
     if (my_hash_insert(&domain_hash, (uchar *)e))
     {
       my_free(e);
@@ -2479,13 +2447,13 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
     {
       if ((rpt= e->rpl_threads[j]))
       {
+        //Dont wait for SA workers , But wait for CA/RA workers
+        //If CA/RA is executed that means corresponding SA is also executed
+        //And remaning SA will never recieve CA/RA so we have to manualy send it
         if (rpt->thd->rgi_slave &&
             (rpt->thd->rgi_slave->gtid_ev_flags3 & Gtid_log_event::FL_START_ALTER_E1))
           continue;
         mysql_mutex_lock(&rpt->LOCK_rpl_thread);
-        //Dont wait for SA workers , But wait for CA/RA workers
-        //If CA/RA is executed that means corresponding SA is also executed
-        //And remaning SA will never recieve CA/RA so we have to manualy send it
         while (rpt->current_owner == &e->rpl_threads[j])
           mysql_cond_wait(&rpt->COND_rpl_thread_stop, &rpt->LOCK_rpl_thread);
         mysql_mutex_unlock(&rpt->LOCK_rpl_thread);
@@ -2866,7 +2834,7 @@ rpl_parallel::do_event(rpl_group_info *serial_rgi, Log_event *ev,
   else
     e= current;
 
-  if (typ != GTID_EVENT && serial_rgi->gtid_ev_flags3 & (Gtid_log_event::FL_START_ALTER_E1 |
+  if (typ == QUERY_EVENT && serial_rgi->gtid_ev_flags3 & (Gtid_log_event::FL_START_ALTER_E1 |
                                    Gtid_log_event::FL_COMMIT_ALTER_E1 |
                                    Gtid_log_event::FL_ROLLBACK_ALTER_E1 ))
   {

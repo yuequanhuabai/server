@@ -5660,10 +5660,7 @@ pthread_handler_t handle_slave_sql(void *arg)
   {
     rli->parallel.wait_for_done(thd, rli);
     /*
-     shutdown the alter threads waiting on C/R ALter
-     What if worker thread has not registered its start alter in alter_list ?
-     In that case rpt->stop
-     TODO sideeffects 
+     shutdown the loner alter threads waiting on C/R ALter
     */
     start_alter_info *info=NULL;
     mysql_mutex_lock(&mi->start_alter_list_lock);
