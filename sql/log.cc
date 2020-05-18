@@ -10128,11 +10128,6 @@ int TC_LOG_BINLOG::unlog_xa_prepare(THD *thd, bool all)
     if (rw_count > 0)
     {
       /* an empty XA-prepare event group is logged */
-#ifndef DBUG_OFF
-      for (ha_info= thd->transaction->all.ha_list; rw_count > 1 && ha_info;
-           ha_info= ha_info->next())
-        DBUG_ASSERT(ha_info->ht() != binlog_hton);
-#endif
       rc= write_empty_xa_prepare(thd, cache_mngr); // normally gains need_unlog
       trans_register_ha(thd, true, binlog_hton, 0); // do it for future commmit
     }

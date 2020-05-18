@@ -619,6 +619,7 @@ Event_db_repository::open_event_table(THD *thd, enum thr_lock_type lock_type,
   if (table_intact.check(*table, &event_table_def))
   {
     thd->commit_whole_transaction_and_close_tables();
+    *table= 0;                                  // Table is now closed
     my_error(ER_EVENT_OPEN_TABLE_FAILED, MYF(0));
     DBUG_RETURN(TRUE);
   }
@@ -1130,7 +1131,7 @@ update_timing_fields_for_event(THD *thd,
   DBUG_ASSERT(thd->security_ctx->master_access & PRIV_IGNORE_READ_ONLY);
 
   if (open_event_table(thd, TL_WRITE, &table))
-    goto end;
+    DBUG_RETURN(1);
 
   fields= table->field;
   /*
@@ -1157,11 +1158,11 @@ update_timing_fields_for_event(THD *thd,
     goto end;
   }
 
-  if (thd->commit_whole_transaction_and_close_tables())
-    goto end;
-
   ret= 0;
 end:
+  if (thd->commit_whole_transaction_and_close_tables())
+    ret= 1;
+
   DBUG_RETURN(MY_TEST(ret));
 }
 
