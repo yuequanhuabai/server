@@ -11,7 +11,7 @@ set global gtid_strict_mode=1;
 --source include/stop_slave.inc
 SET GLOBAL slave_parallel_threads=10;
 set global slave_parallel_mode=optimistic;
-set global slave_domain_parallel_threads=2;
+set global slave_domain_parallel_threads=3;
 change master to master_use_gtid=slave_pos;
 --source include/start_slave.inc
 
@@ -20,6 +20,8 @@ change master to master_use_gtid=slave_pos;
 --let $master_server= "master"
 --let $domain_1=11
 --let $domain_2=12
+--let $M_port= $MASTER_MYPORT
+--let $S_port= $SLAVE_MYPORT
 --source include/start_alter_include.test
 --source include/save_master_gtid.inc
 

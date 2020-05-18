@@ -18,6 +18,8 @@ change master to master_use_gtid=slave_pos;
 --let $master_server= "master"
 --let $domain_1=11
 --let $domain_2=12
+--let $M_port= $MASTER_MYPORT
+--let $S_port= $SLAVE_MYPORT
 --source include/start_alter_include.test
 --source include/save_master_gtid.inc
 

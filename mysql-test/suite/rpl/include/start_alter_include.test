@@ -7,9 +7,14 @@
 # ==== Usage ====
 # --let $domain_1=
 # --let $domain_2=
+# --let $M_port=   //Master port
+# --let $S_port=   //Slave port
 #
 --echo # Myisam
---connection master
+connect(master_node,127.0.0.1,root,,test, $M_port);
+connect(slave_node,127.0.0.1,root,,test, $S_port);
+
+--connection master_node
 create table t1( a int, b int) engine=myisam;
 insert into t1 values(1,1);
 insert into t1 values(2,2);
@@ -20,13 +25,20 @@ insert into t1 values(1,1, NULL);
 --error ER_DUP_ENTRY
 alter table t1 change a a int unique ;
 #source include/show_binlog_events.inc;
+
+
+--source include/save_master_gtid.inc
+--connection slave_node
+--source include/sync_with_master_gtid.inc
+
+
 show create table t1;
---connection master
+--connection master_node
 drop table t1;
 #--source include/reset_master_slave_binlog.inc
 
 --echo # Innodb
---connection master
+--connection master_node
 create table t1( a int, b int) engine=innodb;
 insert into t1 values(1,1);
 insert into t1 values(2,2);
@@ -37,8 +49,15 @@ insert into t1 values(1,1, NULL);
 --error ER_DUP_ENTRY
 alter table t1 change a a int unique ;
 #source include/show_binlog_events.inc;
+
+
+--source include/save_master_gtid.inc
+--connection slave_node
+--source include/sync_with_master_gtid.inc
+
+
 show create table t1;
---connection master
+--connection master_node
 drop table t1;
 #--source include/reset_master_slave_binlog.inc
 
@@ -55,12 +74,19 @@ insert into t1 values(1,1, NULL);
 --error ER_DUP_ENTRY
 alter table t1 change a a int unique ;
 #source include/show_binlog_events.inc;
+
+
+--source include/save_master_gtid.inc
+--connection slave_node
+--source include/sync_with_master_gtid.inc
+
+
 show create table t1;
 --connection master
 drop table t1;
 #--source include/reset_master_slave_binlog.inc
 
---connection master
+--connection master_node
 --echo #concurrent alter Myisam
 --let $alter_engine=myisam
 --let $alter_algorithm=copy
@@ -68,7 +94,7 @@ drop table t1;
 #source include/show_binlog_events.inc;
 #--source include/reset_master_slave_binlog.inc
 
---connection master
+--connection master_node
 --echo #concurrent alter Aria
 --let $alter_engine=aria
 --let $alter_algorithm=copy
@@ -76,7 +102,7 @@ drop table t1;
 #source include/show_binlog_events.inc;
 #--source include/reset_master_slave_binlog.inc
 
---connection master
+--connection master_node
 --echo #concurrent alter Innodb copy
 --let $alter_engine=innodb
 --let $alter_algorithm=copy
@@ -84,7 +110,7 @@ drop table t1;
 #source include/show_binlog_events.inc;
 #--source include/reset_master_slave_binlog.inc
 
---connection master
+--connection master_node
 --echo #concurrent alter Innodb Inplace
 --let $alter_engine=innodb
 --let $alter_algorithm=inplace

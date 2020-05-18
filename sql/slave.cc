@@ -4028,8 +4028,9 @@ apply_event_and_update_pos_apply(Log_event* ev, THD* thd, rpl_group_info *rgi,
   DBUG_PRINT("info", ("apply_event error = %d", exec_res));
   if (exec_res == 0)
   {
-    if (thd->rgi_slave && thd->rgi_slave->gtid_ev_flags3 &
-                                            Gtid_log_event::FL_START_ALTER_E1)
+    if (thd->rgi_slave && (thd->rgi_slave->gtid_ev_flags3 &
+                         Gtid_log_event::FL_START_ALTER_E1) &&
+        thd->rgi_slave->finish_event_group_called)
       DBUG_RETURN(exec_res ? 1 : 0);
     int error= ev->update_pos(rgi);
  #ifndef DBUG_OFF

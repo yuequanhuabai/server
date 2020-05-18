@@ -1,16 +1,10 @@
 include/master-slave.inc
 [connection master]
+connection master;
 set global binlog_split_alter=true;
 connection slave;
 set global gtid_strict_mode=1;
-connection slave;
-include/stop_slave.inc
-SET GLOBAL slave_parallel_threads=10;
-set global slave_parallel_mode=optimistic;
-change master to master_use_gtid=slave_pos;
-include/start_slave.inc
-#Parallel Slave
-connection master;
+#Legacy Master Slave
 # Myisam
 connect master_node,127.0.0.1,root,,test, $M_port;
 connect slave_node,127.0.0.1,root,,test, $S_port;
@@ -956,14 +950,7 @@ SET GLOBAL debug_dbug= @old_debug;
 include/save_master_gtid.inc
 connection slave;
 include/sync_with_master_gtid.inc
-#cleanup
-include/stop_slave.inc
-SET GLOBAL slave_parallel_threads=0;
-set global slave_domain_parallel_threads=0;
-set global slave_parallel_mode=conservative;
 set global gtid_strict_mode=0;
-set global gtid_domain_id= 0;
-include/start_slave.inc
 connection master;
 set global binlog_split_alter=false;
 include/rpl_end.inc
