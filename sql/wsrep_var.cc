@@ -152,6 +152,12 @@ bool wsrep_on_check(sys_var *self, THD* thd, set_var* var)
   return false;
 }
 
+/* Return 1 if this storage engine should be handled by Galera */
+bool wsrep_hton_check(handlerton *hton)
+{
+  return hton == innodb_hton_ptr;
+}
+
 bool wsrep_causal_reads_update (sys_var *self, THD* thd, enum_var_type var_type)
 {
   if (thd->variables.wsrep_causal_reads) {

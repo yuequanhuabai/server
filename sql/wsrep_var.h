@@ -104,7 +104,7 @@ extern bool wsrep_reject_queries_update      UPDATE_ARGS;
 extern bool wsrep_debug_update               UPDATE_ARGS;
 
 extern bool wsrep_gtid_seq_no_check          CHECK_ARGS;
-
+extern bool wsrep_hton_check(handlerton *hton);
 #else  /* WITH_WSREP */
 
 #define wsrep_provider_init(X)

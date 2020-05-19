@@ -6597,7 +6597,7 @@ int handler::ha_reset()
 }
 
 #ifdef WITH_WSREP
-static int wsrep_after_row(THD *thd)
+static int wsrep_after_row(THD *thd, handlerton *hton)
 {
   DBUG_ENTER("wsrep_after_row");
   if (thd->internal_transaction())
@@ -6613,7 +6613,7 @@ static int wsrep_after_row(THD *thd)
     my_message(ER_ERROR_DURING_COMMIT, "wsrep_max_ws_rows exceeded", MYF(0));
     DBUG_RETURN(ER_ERROR_DURING_COMMIT);
   }
-  else if (wsrep_after_row(thd, false))
+  else if (wsrep_after_row_internal(thd))
   {
     DBUG_RETURN(ER_LOCK_DEADLOCK);
   }
@@ -7014,7 +7014,7 @@ int handler::ha_write_row(const uchar *buf)
     }
 #ifdef WITH_WSREP
     if (WSREP_NNULL(ha_thd()) && table_share->tmp_table == NO_TMP_TABLE &&
-        !error && (error= wsrep_after_row(ha_thd())))
+        !error && (error= wsrep_after_row(ha_thd(), ht)))
     {
       DBUG_RETURN(error);
     }
@@ -7064,7 +7064,7 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
     }
 #ifdef WITH_WSREP
     if (WSREP_NNULL(ha_thd()) && table_share->tmp_table == NO_TMP_TABLE &&
-        !error && (error= wsrep_after_row(ha_thd())))
+        !error && (error= wsrep_after_row(ha_thd(), ht)))
       return error;
 #endif /* WITH_WSREP */
   }
@@ -7127,7 +7127,7 @@ int handler::ha_delete_row(const uchar *buf)
     }
 #ifdef WITH_WSREP
     if (WSREP_NNULL(ha_thd()) && table_share->tmp_table == NO_TMP_TABLE &&
-        !error && (error= wsrep_after_row(ha_thd())))
+        !error && (error= wsrep_after_row(ha_thd(), ht)))
     {
       return error;
     }
