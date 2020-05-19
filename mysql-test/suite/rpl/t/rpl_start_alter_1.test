@@ -13,6 +13,7 @@ set global gtid_strict_mode=1;
 --let $domain_2=0
 --let $M_port= $MASTER_MYPORT
 --let $S_port= $SLAVE_MYPORT
+--let $sync_slave=1
 
 --source include/start_alter_include.test
 --source include/save_master_gtid.inc

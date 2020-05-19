@@ -39,11 +39,14 @@ insert into t9 values(1,1),(2,2);
 --eval create table t10( a int primary key, b int) engine=$alter_engine
 insert into t10 values(1,1),(2,2);
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 --eval set global gtid_domain_id= $domain_1;
 connect (con1,localhost,root,,);
@@ -111,11 +114,14 @@ connect (con20,localhost,root,,);
 --connection con10
 --reap
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 
 --echo #Concurrent DML
@@ -185,11 +191,14 @@ if ($alter_algorithm == "inplace")
 --connection con20
 --reap
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 }
 --connection con1
@@ -213,11 +222,14 @@ if ($alter_algorithm == "inplace")
 --connection con10
 --reap
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 
 --echo # Rollback tests
@@ -284,19 +296,25 @@ insert into t10 values(3,2,1,1);
 --reap
 
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 drop table t1,t2,t3,t4,t5,t6,t7,t8,t9,t10;
 
---echo #Sync
---source include/save_master_gtid.inc
---connection slave_node
---source include/sync_with_master_gtid.inc
---connection master_node
+if ($sync_slave)
+{
+  --echo #Sync
+  --source include/save_master_gtid.inc
+  --connection slave_node
+  --source include/sync_with_master_gtid.inc
+  --connection master_node
+}
 
 --disconnect con1
 --disconnect con2
